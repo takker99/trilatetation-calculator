@@ -1,0 +1,2 @@
+# trilatetation-calculator
+三辺測量で測定した四辺形鎖の辺長を計算するscript
