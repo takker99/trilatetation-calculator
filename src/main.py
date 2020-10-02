@@ -1,5 +1,8 @@
 import numpy as np
+import pandas as pd
 import math
+from typing import Sequence
+import argparse
 
 
 def calccos(oa: float, ob: float, ab: float):
@@ -27,7 +30,6 @@ def makeC(l: list):
         -l[4]/(l[1]*l[2]*sin2),
         - l[5] / (l[2] * l[0] * sin0)
     ]
-    print(f'c =\n{c}')
     return np.matrix(c).T
 
 
@@ -45,36 +47,57 @@ def calcResidual(lengths: np.matrix):
     return -(omega/sum([i**2 for i in c.T.tolist()[0]]))*c
 
 # 収束判定
-
-
 def checkConvergence(residuals: np.matrix):
+    if len(residuals) == 0: return False
     value = max([max([math.fabs(residual) for residual in row])
                  for row in residuals])
-    print(f'value = {value}')
     return value < 10.0**-6 # μmまで合えば良し
+
+def printLengths(lengths: Sequence[float], indent: int = 1, symbol: str = 'L'):
+    space = ''.join(['\t']*indent)
+    for i in range(len(lengths)):
+        print(f'{space}{symbol}_{i} = {lengths[i]:.6g}m')
+
+
+def printStepLengths(lengths: Sequence[float], step: int, indent: int = 1, symbol: str = 'l'):
+    space = ''.join(['\t']*indent)
+    for i in range(len(lengths)):
+        print(f'{space}{symbol}_{i}({step}) = {lengths[i]:.6g}m')
 
 
 # main函数
 if __name__ == '__main__':
+    # commald-line argumentsの設定
+    parser = argparse.ArgumentParser(
+        description='三辺測量によって得た四辺形の6個の辺長の最確値と残差を求めるscript')
+    parser.add_argument('input_file', help='辺長の値が書き込まれたcsvファイル')
+    parser.add_argument('--ignore', '-I', choices=[
+                        'header', 'index', 'both'], default='none', help='csv fileのheader及びindexを無視するかどうか')
+    args = parser.parse_args()
+
+    df=None
+
+    # fileを読み込む
+    if args.ignore == 'header':
+        df = pd.read_csv(args.input_file, usecols=[0])
+    elif args.ignore == 'index':
+        df = pd.read_csv(args.input_file, index_col=0, header=None, usecols=[0, 1])
+    elif args.ignore == 'both':
+        df = pd.read_csv(args.input_file, index_col=0, usecols=[0, 1])
+    else:
+        df = pd.read_csv(args.input_file, header=None, usecols=[0])
+
     # 初期値
-    lengths = np.matrix([
-        [91.882],
-        [97.682],
-        [63.419],
-        [75.814],
-        [90.791],
-        [129.469],
-    ], dtype=float)
+    measured_lengths = np.matrix(df, dtype=float)
+    lengths = np.matrix(measured_lengths);
 
     i = 0
-    print(f'initial lengths:\n{lengths}')
-    residual = calcResidual(lengths)
+    print('This program calculates lengths in metre.')
+    print('Measured lengths:')
+    printStepLengths(*lengths.T.tolist(), i, 1)
+    print('Start calculating...')
     # 残差を保持するlist
-    residuals = residual.T.tolist()
-    lengths += residual
-    i += 1
-    print(f'step = {i}, lengths =\n{lengths}')
-    print(f'residual =\n{residual}')
+    residuals = []
 
     # 計算処理
     while not checkConvergence(residuals):
@@ -82,10 +105,14 @@ if __name__ == '__main__':
         residuals.append(*residual.T.tolist())
         lengths += residual
         i += 1
-        print(f'step = {i}, lengths =\n{lengths}')
-        print(f'residual =\n{residual}')
+        print(f'### result of step {i} ###')
+        printStepLengths(*lengths.T.tolist(), i)
+        printStepLengths(*residual.T.tolist(), i-1, symbol='⊿')
         if len(residuals) > 10:
             residuals.pop(0)
-
-    print(
-        f'Finish calculating!\n\tMPV: {lengths}\n\tresidual: {residuals[len(residuals)-1]}')
+    print(f'##########################')
+    print('Finish calculating!')
+    print('Most probable lengths:')
+    printLengths(*measured_lengths.T.tolist())
+    print('Residuals:')
+    printLengths(*(lengths - measured_lengths).T.tolist(), symbol='ν')
